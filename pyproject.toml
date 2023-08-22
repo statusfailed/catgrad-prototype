@@ -1,0 +1,42 @@
+[project]
+name = "catgrad"
+version = "0.0.0.1"
+authors = [
+  { name="Paul Wilson", email="paul@statusfailed.com" }
+]
+description = "Reverse-derivative-based machine learning"
+readme = "README.md"
+requires-python = ">= 3.7"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+]
+dependencies = [
+  "yarrow-diagrams==0.0.3.1",
+  "numpy~=1.21",
+]
+
+[project.optional-dependencies]
+dev = [
+  "hypothesis",
+  "pytest",
+]
+example = [
+  "pandas",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/statusfailed/catgrad"
+"Github" = "https://github.com/statusfailed/catgrad"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+packages = ["catgrad"]
+
+[tool.pytest.ini_options]
+testpaths = [
+  "tests"
+]

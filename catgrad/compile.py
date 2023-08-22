@@ -2,8 +2,10 @@ import numpy as np
 from yarrow import *
 from yarrow.finite_function import cumsum
 from yarrow.decompose.frobenius import frobenius_decomposition
-
 from yarrow.numpy.layer import layer
+
+from catgrad.learner import make_learner
+import catgrad.optic as optic
 
 def decompose_wiring(d: 'Diagram'):
     # Assume 'd' is a Frobenius decomposition.
@@ -67,3 +69,34 @@ def to_python(d: Diagram, ops: Operations, layering, model_name='model') -> str:
 def optic_to_python(d: Diagram, model_name):
     d, ops, layering = acyclic_decompose(d)
     return to_python(d, ops, layering, model_name=model_name)
+
+
+def compile(model, update, displacement, imports=[]):
+    """ Compile a model ``f : A → B`` containing Parameter operations
+    into a python function ``step : P × A × B → B × P × A``.
+    """
+    p, f, (P, A, B) = make_learner(model, update, displacement)
+    adapted = optic.adapt_optic(f)
+    import_str = "\n".join(imports)
+    code = f"""
+from numpy import float32, dtype
+from catgrad.signature import *
+{imports}
+{optic_to_python(adapted, model_name="step")}"""
+
+    scope = {}
+    exec(code, scope)
+    step = scope['step']
+
+    def wrapped_step(*args):
+        result = step(*args)
+        y = result[:len(B)]
+        p = result[len(B):len(B) + len(P)]
+        x = result[:-len(A)]
+        return y, p, x
+
+    # TODO: this is a hack: we *assume* the p morphism has its operations in the
+    # same order as they appear in the boundary, but this will break easily if
+    # factor_parameters changes!
+    theta = [ x.initialize() for x in p.G.xn.table ]
+    return theta, wrapped_step, code

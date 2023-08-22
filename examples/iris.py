@@ -1,64 +1,16 @@
-from catgrad.signature import NdArray
-from catgrad.layer import linear, dense, sigmoid
-from catgrad.compile import optic_to_python
-from catgrad.learner import gd, mse
-from catgrad.parameters import factor_parameters
-import catgrad.optic as optic
+# from catgrad import NdArray
+# from catgrad.layer import linear, dense, sigmoid
+# from catgrad.learner import get_step, gd, mse
+from catgrad import NdArray, layer, learner, compile
 
 import argparse
 import numpy as np
 import pandas as pd
 import scipy.special as special
 
-################################################################################
-# Compiling the model
-
-def make_learner(model, update, displacement):
-    p, f = factor_parameters(model)
-
-    A, B = model.type
-    P = p.type[1]
-
-    id_A = optic.identity(A)
-    u = update(P)
-    d = displacement(B)
-    of = optic.Optic().map_arrow(f)
-
-    step = (u @ id_A) >> of >> d
-    return P, A, B, p, step
-
-def get_step(model):
-    P, A, B, p, f = make_learner(model, lambda P: gd(P, ε=0.01), mse)
-    adapted = optic.adapt_optic(f)
-    code = f"""
-from numpy import float32, dtype
-from catgrad.signature import *
-{optic_to_python(adapted, model_name="step")}"""
-
-    print(code)
-    scope = {}
-    exec(code, scope)
-    step = scope['step']
-
-    def wrapped_step(*args):
-        result = step(*args)
-        y = result[:len(B)]
-        p = result[len(B):len(B) + len(P)]
-        x = result[:-len(A)]
-        return y, p, x
-
-    # TODO: this is a hack: we *assume* the p morphism has its operations in the
-    # same order as they appear in the boundary, but this will break easily if
-    # factor_parameters changes!
-    theta = [ x.initialize() for x in p.G.xn.table ]
-    return theta, wrapped_step
-
 INPUT_TYPE = NdArray((4,), 'f4')
 OUTPUT_TYPE = NdArray((3,), 'f4')
 HIDDEN_TYPE = NdArray((20,), 'f4')
-
-################################################################################
-# Iris data loading etc.
 
 def accuracy(y_pred, y_true):
     num = np.argmax(y_pred, axis=1) == np.argmax(y_true, axis=1)
@@ -86,18 +38,19 @@ def main():
     args = parser.parse_args()
 
     if args.model == 'linear':
-        model = linear(INPUT_TYPE, OUTPUT_TYPE)
+        model = layer.linear(INPUT_TYPE, OUTPUT_TYPE)
     elif args.model == 'simple':
-        model = linear(INPUT_TYPE, OUTPUT_TYPE) >> sigmoid(OUTPUT_TYPE)
+        model = layer.linear(INPUT_TYPE, OUTPUT_TYPE) >> layer.sigmoid(OUTPUT_TYPE)
     elif args.model == 'dense':
-        model = dense(INPUT_TYPE, OUTPUT_TYPE, activation=sigmoid)
+        model = layer.dense(INPUT_TYPE, OUTPUT_TYPE, activation=layer.sigmoid)
     elif args.model == 'hidden':
-        model = dense(INPUT_TYPE, HIDDEN_TYPE, activation=sigmoid) \
-                >> dense(HIDDEN_TYPE, OUTPUT_TYPE, activation=sigmoid)
+        model = layer.dense(INPUT_TYPE, HIDDEN_TYPE, activation=layer.sigmoid) \
+                >> layer.dense(HIDDEN_TYPE, OUTPUT_TYPE, activation=layer.sigmoid)
 
     # compile the inner step of the training loop
     # NOTE: parameters are auto-initialized to zeros (see get_step)
-    p, step  = get_step(model)
+    p, step, code = compile(model, learner.gd(ε=0.01), learner.mse)
+    print(code)
 
     # Load data from CSV
     train_input, train_labels = load_iris(args.iris_data)

@@ -1,4 +1,4 @@
-from catgrad.signature import *
-from catgrad.operation import *
-from catgrad.layer import *
-from catgrad.optic import *
+from catgrad.signature import NdArray, Shape, Dtype
+import catgrad.learner as learner
+import catgrad.layer as layer
+from catgrad.compile import compile

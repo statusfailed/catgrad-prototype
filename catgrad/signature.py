@@ -42,7 +42,8 @@ def element(S: NdArray):
     """ Turn a shape into a type """
     return FiniteFunction(None, [S], dtype='object')
 
-def object(*args: List[NdArray]):
+def obj(*args: List[NdArray]):
+    """ Create an object of the category from a list of NdArray """
     return FiniteFunction(None, args, dtype='object')
 
 # Parameters are like Constant but without values.

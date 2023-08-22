@@ -2,6 +2,7 @@ from hypothesis import given
 from tests.strategies import shapes
 
 from catgrad import *
+from catgrad.signature import *
 
 def test_add_empty():
     c = add(FiniteFunction.initial(0))
@@ -70,8 +71,8 @@ def test_matmul():
 
     m = MatMul(X0, X1).to_diagram()
 
-    assert m.type[0] == object(X0, X1)
-    assert m.type[1] == object(Y)
+    assert m.type[0] == obj(X0, X1)
+    assert m.type[1] == obj(Y)
 
 def test_matmul_rev():
     X0 = NdArray((3,4), float)
@@ -80,5 +81,5 @@ def test_matmul_rev():
 
     r = MatMul(X0, X1).rev()
 
-    assert r.type[0] == object(X0, X1) + object(Y)
-    assert r.type[1] == object(X0, X1)
+    assert r.type[0] == obj(X0, X1) + obj(Y)
+    assert r.type[1] == obj(X0, X1)

@@ -2,6 +2,8 @@ from hypothesis import given
 from tests.strategies import shapes
 
 from catgrad import *
+from catgrad.signature import *
+from catgrad.layer import *
 
 @given(shapes())
 def test_bias(S: Shape):

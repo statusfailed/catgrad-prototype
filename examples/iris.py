@@ -80,10 +80,6 @@ def main():
         [y_hat], _, _ = step(*p, x[i], y[i])
         y_hats[i] = y_hat
 
-    print('p: ', p)
-    print('ŷ₀ = ', y_hats[0].T)
-    print('y₀ = ', y[0].T)
-
     print(f'accuracy: {100*accuracy(y_hats, y)}%')
 
 if __name__ == "__main__":

@@ -81,7 +81,7 @@ def compile(model, update, displacement, imports=[]):
     code = f"""
 from numpy import float32, dtype
 from catgrad.signature import *
-{imports}
+{import_str}
 {optic_to_python(adapted, model_name="step")}"""
 
     scope = {}

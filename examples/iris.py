@@ -50,7 +50,7 @@ def main():
     # compile the inner step of the training loop
     # NOTE: parameters are auto-initialized to zeros (see get_step)
     p, step, code = compile(model, learner.gd(ε=0.01), learner.mse)
-    print(code)
+    # print(code)
 
     # Load data from CSV
     train_input, train_labels = load_iris(args.iris_data)

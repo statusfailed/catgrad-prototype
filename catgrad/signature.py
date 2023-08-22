@@ -370,11 +370,11 @@ class Sigmoid(Operation):
 
     @property
     def source(self):
-        return object(self.type)
+        return obj(self.type)
 
     @property
     def target(self):
-        return object(self.type)
+        return obj(self.type)
 
     def fwd(self):
         return lens_fwd(self.to_diagram())
@@ -382,7 +382,7 @@ class Sigmoid(Operation):
     def rev(self):
         # Build the diagram for the expression
         #   σ(x) * (1 - σ(x)) * dy
-        A = object(self.type)
+        A = obj(self.type)
 
         mul = Multiply(self.type, self.type).to_diagram()
         id_A = identity(A)
@@ -399,7 +399,7 @@ class Sigmoid(Operation):
         return (top @ id_A) >> mul
 
     def residual(self):
-        return object(self.type)
+        return obj(self.type)
 
     def call(self, x):
         return special.expit(x)

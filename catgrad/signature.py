@@ -223,8 +223,8 @@ class Reshape(LinearOperation):
 
 @dataclass
 class Transpose2D(LinearOperation):
-    X: Shape
-    Y: Shape = None
+    X: NdArray
+    Y: NdArray = None
 
     def __post_init__(self):
         if self.Y == None:

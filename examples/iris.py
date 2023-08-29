@@ -1,7 +1,7 @@
 # from catgrad import NdArray
 # from catgrad.layer import linear, dense, sigmoid
 # from catgrad.learner import get_step, gd, mse
-from catgrad import NdArray, layer, learner, compile
+from catgrad import NdArray, layer, learner, compile, compile_model
 
 import argparse
 import numpy as np
@@ -49,7 +49,7 @@ def main():
 
     # compile the inner step of the training loop
     # NOTE: parameters are auto-initialized to zeros (see get_step)
-    p, step, code = compile(model, learner.gd(ε=0.01), learner.mse)
+    p, step, predict, code = compile_model(model, learner.gd(ε=0.01), learner.mse)
     # print(code)
 
     # Load data from CSV
@@ -73,12 +73,17 @@ def main():
 
         yhat, p, _ = step(*p, xi, yi)
 
+    # Predict, using the (faster) model circuit
+    print("compiling predict...")
+    predict, _ = compile(predict, function_name='predict')
+    print("predicting...")
     y_hats = np.zeros_like(y)
     for i in range(0, len(x)):
         # NOTE: using "step" to predict like this works, but it's doing a lot of
         # extra redundant computation too.
-        [y_hat], _, _ = step(*p, x[i], y[i])
-        y_hats[i] = y_hat
+        y_hats[i] = predict(*p, x[i])
+        # you can also compute predictions using "step", but it's slower.
+        # [y_hats[i]], _, _ = step(*p, x[i], y[i])
 
     print(f'accuracy: {100*accuracy(y_hats, y)}%')
 

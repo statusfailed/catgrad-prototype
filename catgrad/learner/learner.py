@@ -19,4 +19,4 @@ def make_learner(model, update, displacement):
     of = optic.Optic().map_arrow(f)
 
     step = (u @ id_A) >> of >> d
-    return p, step, (P, A, B)
+    return p, step, f, (P, A, B)

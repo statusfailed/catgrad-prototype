@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import scipy.special as special
 
+# TODO: FIXME: import yarrow qualified; don't re-export everything!
 from yarrow import *
 from catgrad.operation import Operation, LinearOperation
 

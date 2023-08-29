@@ -1,3 +1,4 @@
+from typing import Callable, Any
 import numpy as np
 from yarrow import *
 from yarrow.finite_function import cumsum
@@ -28,7 +29,8 @@ def acyclic_decompose(d: 'Diagram'):
     # layer the diagram
     layering, completed = layer(d)
     is_acyclic = np.all(completed)
-    assert is_acyclic
+    if not is_acyclic:
+        raise ValueError("Diagram is not acyclic")
 
     # extract operations
     ops = decompose_wiring(d)
@@ -37,7 +39,11 @@ def acyclic_decompose(d: 'Diagram'):
 # NOTE: this is a bit of a hack.
 # Instead of storing s_type and t_type in Operations,
 # we're actually storing *node indices*!
-def to_python(d: Diagram, ops: Operations, layering, model_name='model') -> str:
+def diagram_to_python(f: Diagram, function_name='f') -> str:
+    """ Transform an acyclic Diagram into python code """
+    # Decompose an acyclic diagram (raising a ValueError if cycles exist)
+    d, ops, layering = acyclic_decompose(f)
+
     # TODO: fix yarrow's cumsum to give n+1 values!
     src_ptr = np.zeros(len(ops.xn)+1, dtype='int64')
     src_ptr[1:] = np.cumsum(ops.s_type.sources.table)
@@ -46,10 +52,7 @@ def to_python(d: Diagram, ops: Operations, layering, model_name='model') -> str:
     tgt_ptr[1:] = np.cumsum(ops.t_type.sources.table)
 
     args = ", ".join(f"x_{i}" for i in d.s.table)
-    s = f"def {model_name}({args}):\n"
-
-    # bit of a hack :-)
-    s += "    from numpy import fromiter as array\n"
+    s = f"def {function_name}({args}):\n"
 
     for op in layering.argsort().table:
         # (ι_{op} >> ops.s_type.values).table[0]
@@ -66,27 +69,34 @@ def to_python(d: Diagram, ops: Operations, layering, model_name='model') -> str:
     s += f"    return {returns}"
     return s
 
-def optic_to_python(d: Diagram, model_name):
-    d, ops, layering = acyclic_decompose(d)
-    return to_python(d, ops, layering, model_name=model_name)
 
-
-def compile(model, update, displacement, imports=[]):
-    """ Compile a model ``f : A → B`` containing Parameter operations
-    into a python function ``step : P × A × B → B × P × A``.
-    """
-    p, f, (P, A, B) = make_learner(model, update, displacement)
-    adapted = optic.adapt_optic(f)
-    import_str = "\n".join(imports)
+# Compile an (acyclic) Diagram into an executable python function.
+def compile(f: Diagram, function_name='f', prefix=[]) -> Callable[Any, Any]:
+    """ Compile an acyclic Diagram built using the Catgrad signature """
+    python = diagram_to_python(f, function_name=function_name)
+    prefix_str = "\n".join(prefix)
+    # FIXME: import hacks to make FiniteFunction's repr() work.
     code = f"""
 from numpy import float32, dtype
 from catgrad.signature import *
-{import_str}
-{optic_to_python(adapted, model_name="step")}"""
-
+from numpy import fromiter as array
+{prefix_str}
+{python}"""
     scope = {}
     exec(code, scope)
-    step = scope['step']
+    return scope[function_name], code
+
+
+def compile_model(model, update, displacement, prefix=[]):
+    """ Compile a model ``f : A → B`` containing Parameter operations
+    into a python function ``step : P × A × B → B × P × A``.
+    """
+    # fstar is the (unadapted) assembled model as an optic, including both
+    # forward and reverse passes.
+    # f is just the forward pass of the model, but note that it has parameters factored out!
+    p, fstar, f, (P, A, B) = make_learner(model, update, displacement)
+    adapted = optic.adapt_optic(fstar)
+    step, code = compile(adapted, function_name='step', prefix=prefix)
 
     def wrapped_step(*args):
         result = step(*args)
@@ -99,4 +109,4 @@ from catgrad.signature import *
     # same order as they appear in the boundary, but this will break easily if
     # factor_parameters changes!
     theta = [ x.initialize() for x in p.G.xn.table ]
-    return theta, wrapped_step, code
+    return theta, wrapped_step, f, code

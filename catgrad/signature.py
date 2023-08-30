@@ -126,6 +126,9 @@ class Discard(LinearOperation):
     def fwd(self):
         return self.to_diagram()
 
+    def dagger(self):
+        return Constant(np.zeros(self.type.shape, self.type.dtype))
+
     def residual(self):
         return wn0
 
@@ -137,7 +140,6 @@ class Discard(LinearOperation):
 
     def call(self, x):
         return None
-
 
 @dataclass
 class Add(LinearOperation):

@@ -1,7 +1,11 @@
 from typing import List
 from dataclasses import dataclass
 import ast
+
+import numpy as np
+
 import catgrad.signature as sig
+from catgrad.compiler.decompose import SingletonOp
 
 def mk_binop(ast_op):
     def binop(op: sig.Operation, x1, x2):
@@ -16,7 +20,7 @@ def mk_unaryop(ast_op):
 def mk_name(i: int, ctx):
     """ Create a name (e.g. ``x0``) from an integer (``0``) and a context
     (``ast.Load()`` or ``ast.Store()``) """
-    return ast.Name(f"x{i}", ast.Load())
+    return ast.Name(f"x{i}", ctx)
 
 ################################################################################
 
@@ -25,14 +29,36 @@ def discard(op: sig.Discard, x):
     # statement to use.
     return ast.Pass()
 
+def _ndarray_to_list_ast(xs):
+    """ Recursively convert a numpy ndarray to a python list """
+    if xs.ndim == 1:
+        # NOTE: we call tolist() here to conver to native python types.
+        # If we don't do this, ast.Constant nodes will have e.g., np.float32
+        # typed values, which will break later.
+        values = xs.tolist()
+        inner = [ ast.Constant(x) for x in values ]
+    else:
+        inner = [ ndarray_to_list_ast(x) for x in xs ]
+    return ast.List(inner, ast.Load())
+
 def constant(op: sig.Constant):
-    return ast.Constant(op.value)
+    # NOTE: the below is basically equivalent to this:
+    # code = f"np.fromiter({str(op.value.tolist())}, dtype='{str(op.value.dtype)}')"
+    # result = ast.parse(code, mode='eval').body
+    fromiter = ast.Attribute(value=ast.Name(id="numpy", ctx=ast.Load()), attr='fromiter', ctx=ast.Load())
+    list_literal = _ndarray_to_list_ast(op.value)
+    dtype = ast.Constant(value=str(op.value.dtype))
+    call = ast.Call(
+        func=fromiter,
+        args=[list_literal],
+        keywords=[ast.keyword(arg='dtype', value=dtype)])
+    return call
 
 add = mk_binop(ast.Add())
 negate = mk_unaryop(ast.USub())
 
 def copy(op: sig.Copy, x):
-    return ast.Tuple([x, x], ast.Load()) # TODO?
+    return ast.Tuple([x, x], ast.Load())
 
 def reshape(op: sig.Reshape, x):
     return ast.parse(f"{x.id}.reshape({op.Y.shape})", mode="eval").body
@@ -47,7 +73,10 @@ def sigmoid(op: sig.Sigmoid, x):
     # NOTE: ast.parse with mode='eval' returns an Expression, but we only want the "body" of the expression.
     # If we try to assign an expression directly, it eliminates the LHS vars for some reason.
     # TODO: why?
-    return ast.parse(f"special.expit({x.id})", mode="eval").body
+    # TODO: sigmoid implementation requires an import; what's a better way to
+    # require the "special" module to be imported other than just hard-coding
+    # the import?
+    return ast.parse(f"scipy.special.expit({x.id})", mode="eval").body
 
 
 # TODO: this is kinda dumb because we could have just made an "ast" method on
@@ -62,6 +91,7 @@ OP_TO_AST = {
     sig.Copy: copy,
     sig.Reshape: reshape,
     sig.Transpose2D: transpose2d,
+    sig.Multiply: multiply,
     sig.MatMul: matmul,
     sig.Sigmoid: sigmoid,
 }
@@ -79,14 +109,8 @@ def to_assignment(op: sig.Operation, arg_ids: List[int], coarg_ids: List[int], o
     assign = ast.Assign(targets=coargs, value=expr)
     return assign
 
-# TODO: produce a list of OpStatement from a Diagram.
-@dataclass
-class OpStatement:
-    op: sig.Operation
-    args: List[int]
-    coargs: List[int]
-
-def to_function(name, arg_ids, coarg_ids, op_statements: List[OpStatement], decorator_list=[]):
+def to_function(name: str, arg_ids: List[int], coarg_ids: List[int], op_statements: List[SingletonOp], decorator_list=[]):
+    """ Create a Python AST node for a function definition from a list of operation assignments """
     args = ast.arguments(
             posonlyargs=[],
             args=[ ast.arg(mk_name(i, ast.Load()).id) for i in arg_ids ],
@@ -96,8 +120,8 @@ def to_function(name, arg_ids, coarg_ids, op_statements: List[OpStatement], deco
             kwarg=None,
             defaults=[])
 
-    coargs = [ mk_name(i, ast.Store()) for i in coarg_ids ]
-    ret_val = ast.Tuple(coargs, ast.Load()) if len(coargs) > 1 else coargs
+    coargs = [ mk_name(i, ast.Load()) for i in coarg_ids ]
+    ret_val = ast.Tuple(coargs, ast.Load()) if len(coargs) > 1 else coargs[0]
 
     body = [ to_assignment(s.op, s.args, s.coargs) for s in op_statements ]
     # return ret_val if there's anything to return, otherwise Pass
@@ -106,45 +130,12 @@ def to_function(name, arg_ids, coarg_ids, op_statements: List[OpStatement], deco
     fn_def = ast.FunctionDef(name, args, body, decorator_list)
     return fn_def
 
-################################################################################
-
-def show(expr):
-    print(ast.unparse(ast.fix_missing_locations(expr)))
-
-def test_to_function():
-    # example program:
-    #   x0 --|---|
-    #        | + |--x2--[ negate ]--- x3
-    #   x1 --|---|
-
-    T = sig.NdArray((3,4), dtype='u1')
-    statements = [
-        OpStatement(sig.Add(T), [0, 1], [2]),
-        OpStatement(sig.Negate(T), [2], [3]),
+def to_module(fn_def):
+    imports = [
+        # import scipy
+        ast.Import(names=[ast.alias('scipy')]),
+        ast.Import(names=[ast.alias('numpy')])
     ]
-    fn_def = to_function('f', [0, 1], [2], statements)
-
-    show(fn_def)
-
-def test_to_assignment():
-    T = sig.NdArray((3,4), dtype='u1')
-    U = sig.NdArray((4,3), dtype='u1')
-    V = sig.NdArray((3*4,), dtype='u1')
-    W = sig.NdArray((4,1), dtype='u1')
-
-    c = np.array([1, 2, 3], dtype='u1')
-
-    show(to_assignment(sig.Constant(c), [], [0]))
-    show(to_assignment(sig.Discard(T), [1], []))
-    show(to_assignment(sig.Add(T), [1,2], [0]))
-    show(to_assignment(sig.Negate(U), [0], [0]))
-    show(to_assignment(sig.Copy(U), [0], [1, 2]))
-    show(to_assignment(sig.Reshape(T, U), [0], [1]))
-    show(to_assignment(sig.Transpose2D(T, V), [0], [0]))
-    show(to_assignment(sig.MatMul(T, W), [1,2], [0]))
-    show(to_assignment(sig.Sigmoid(T), [0], [0]))
-
-if __name__ == "__main__":
-    import numpy as np
-    # test_to_assignment()
-    test_to_function()
+    body = imports
+    body.append(fn_def)
+    return ast.fix_missing_locations(ast.Module(body=body, type_ignores=[]))

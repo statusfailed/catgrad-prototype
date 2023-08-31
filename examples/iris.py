@@ -1,7 +1,7 @@
 # from catgrad import NdArray
 # from catgrad.layer import linear, dense, sigmoid
 # from catgrad.learner import get_step, gd, mse
-from catgrad import NdArray, layer, learner, compile, compile_model
+from catgrad import NdArray, layer, learner, compile_diagram, compile_model
 
 import argparse
 import numpy as np
@@ -49,10 +49,11 @@ def main():
 
     # compile the inner step of the training loop
     # NOTE: parameters are auto-initialized to zeros (see get_step)
-    p, step, predict, code = compile_model(model, learner.gd(ε=0.01), learner.mse)
+    p, step, predict = compile_model(model, learner.gd(ε=0.01), learner.mse)
     # print(code)
 
     # Load data from CSV
+    print("loading data...")
     train_input, train_labels = load_iris(args.iris_data)
     N = len(train_input)
 
@@ -75,7 +76,7 @@ def main():
 
     # Predict, using the (faster) model circuit
     print("compiling predict...")
-    predict, _ = compile(predict, function_name='predict')
+    predict = compile_diagram(predict, function_name='predict')
     print("predicting...")
     y_hats = np.zeros_like(y)
     for i in range(0, len(x)):

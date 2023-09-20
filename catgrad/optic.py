@@ -102,7 +102,9 @@ def adapt_optic(optic: Diagram):
     N_t = N_t // 2
 
     s = FiniteFunction.interleave(N_s) >> optic.s
-    t = FiniteFunction.cointerleave(N_t) >> optic.t
+    # NOTE: although we use the interleave map below, the "target" map "points
+    # backwards", so it's as if we've actually used cointerleave.
+    t = FiniteFunction.interleave(N_t) >> optic.t
 
     s_ = (FiniteFunction.inj0(N_s, N_s) >> s) + (FiniteFunction.inj1(N_t, N_t) >> t)
     t_ = (FiniteFunction.inj0(N_t, N_t) >> t) + (FiniteFunction.inj1(N_s, N_s) >> s)
